@@ -32,6 +32,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -51,6 +52,7 @@ var outputOpt = getopt.StringLong("output", 'o', "", "Set the path and filename 
 var privateFlag = getopt.BoolLong("private", 'p', "Set the private flag")
 var verboseFlag = getopt.BoolLong("verbose", 'v', "be verbose")
 var debugFlag = getopt.BoolLong("debug", 'd', "debug output")
+var threadsOpt = getopt.IntLong("threads", 't', 0, "Number of threads to use for hashing.\nDefault is set to CPU cores")
 
 func main() {
 	getopt.SetParameters("<target directory or filename>")
@@ -65,6 +67,12 @@ func main() {
 	if *helpFlag || getopt.NArgs() == 0 {
 		getopt.Usage()
 		return
+	}
+
+	if *threadsOpt > 0 {
+		runtime.GOMAXPROCS(*threadsOpt)
+	} else {
+		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
 
 	if len(*announceOpt) == 0 {
@@ -245,7 +253,7 @@ func createFromDirectory(filename string, pieceLength uint64) ([]torrentfile.Fil
 	pieceIndex := 0
 	pieceBuf := make([]byte, pieceLength)
 	off := uint64(0)
-	c := make(chan piece)
+	c := make(chan piece, runtime.GOMAXPROCS(0))
 
 	for _, f := range files {
 		fp, err := os.Open(filename + "/" + f.Path)
@@ -287,7 +295,7 @@ func createFromDirectory(filename string, pieceLength uint64) ([]torrentfile.Fil
 			}
 
 			if off == 0 { // hash the piece if offset is zero
-				go buildHash(piece{index: pieceIndex}, pieceBuf, c)
+				go buildHash(piece{index: pieceIndex}, pieceBuf, c, numPieces)
 				//pieces[pieceIndex] = sha1.Sum(pieceBuf)
 				//verboseOut(fmt.Sprintf("Hashed %d of %d pieces", pieceIndex+1, numPieces))
 				pieceIndex++
@@ -301,7 +309,7 @@ func createFromDirectory(filename string, pieceLength uint64) ([]torrentfile.Fil
 	if off != 0 {
 		debug(fmt.Sprintf("Add %d remaining bytes to pieces list at index %d", off, pieceIndex))
 		//pieces[pieceIndex] = sha1.Sum(pieceBuf[:off])
-		go buildHash(piece{index: pieceIndex}, pieceBuf, c)
+		go buildHash(piece{index: pieceIndex}, pieceBuf, c, numPieces)
 		//verboseOut(fmt.Sprintf("Hashed %d of %d pieces", pieceIndex+1, numPieces))
 	}
 
@@ -309,7 +317,6 @@ func createFromDirectory(filename string, pieceLength uint64) ([]torrentfile.Fil
 	for i := uint64(0); i < numPieces; i++ {
 		p := <-c
 		pieces[p.index] = p.hash
-		verboseOutNoNl(fmt.Sprintf("Hashed %d of %d pieces\r", p.index+1, numPieces))
 	}
 	verboseOut("")
 
@@ -321,8 +328,9 @@ type piece struct {
 	hash  [torrentfile.PIECE_SIZE]byte
 }
 
-func buildHash(p piece, data []byte, c chan piece) {
+func buildHash(p piece, data []byte, c chan piece, numPieces uint64) {
 	p.hash = sha1.Sum(data)
+	verboseOutNoNl(fmt.Sprintf("Hashed %d of %d pieces\r", p.index+1, numPieces))
 	c <- p
 }
 
