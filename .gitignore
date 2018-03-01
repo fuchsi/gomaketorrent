@@ -21,3 +21,4 @@ gomaketorrent
 *.a
 
 vendor
+bin
