@@ -2,9 +2,29 @@
 Command line utility to create BitTorrent metainfo files
 
 ## Installation
+
+Compile gomaketorrent
+
 ```bash
-$ dep ensure
-$ go install
+make linux
+```
+
+or
+
+```bash
+make windows
+```
+
+or
+
+```bash
+make darwin
+```
+
+And install it to your system
+
+```bash
+make install
 ```
 
 ## Usage
